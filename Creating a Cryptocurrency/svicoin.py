@@ -6,12 +6,12 @@ import hashlib
 import json
 from flask import Flask, jsonify, request
 import requests
-from uuid import uuid4
+from uuid import uuid4               # Generate unique random address
 from urllib.parse import urlparse
 
 # Transforming a general purpose blockchain inte cryptocurrency:
-# 1)Adding transactions into the Blockchain class
-# 2)Building a concensus function (to make sure that each node in the decentralised network has the same chain)
+# 1 -1)Adding transactions into the Blockchain class
+#    2)Building a concensus function (to make sure that each node in the decentralised network has the same chain)
 # Introducing a separate list which contains transactions before they are added to the block (transactions are appened to that list, and then all accumulate transactions are added to the block when the block is mined)
 
 
@@ -80,11 +80,36 @@ class Blockchain:        # Defining the class
         parsed_url = urlparse(address)
         self.nodes.add(parsed_url.netloc)
         
-# Mining a blockchain (two functions: to display a blockchain and to mine a new block)
+# Replacing any chain that is shorter than the longest chain among all the nodes of the network
+    def replace_chain(self):
+        network = self.nodes
+        longest_chain = None
+        max_length = len(self.chain)
+        for node in network:
+            response = requests.get(f'http://{node}/get_chain')
+            if response.status_code == 200:
+                length = response.json()['length']
+                chain = response.json()['chain']
+                if length > max_length and self.is_chain_valid(chain):
+                    max_length = length
+                    longest_chain = chain
+        if longest_chain:
+            self.chain = longest_chain
+            return True          # Specifying that the chain was replaced
+        return False             # The chain was not replaced as it originally was the longest one
+    
+        
+# 2 - Mining a blockchain (two functions: to display a blockchain and to mine a new block)
+# Integrating a transactions
+# Creating more nodes
 
 # Creating a Web App
 app = Flask(__name__) # Creating an instance of Flask class
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
+
+# Creating an address for the node on Port 5000
+node_address = str(uuid4()).replace('-', '')  # Removing dashes
+
 
 # Creating a Blockchain
 blockchain = Blockchain()   # Creating an instance object of Blockchain
@@ -98,12 +123,14 @@ def mine_block():
     previous_proof = previous_block['proof']
     proof = blockchain.proof_of_work(previous_proof)
     previous_hash = blockchain.hash(previous_block)
+    blockchain.add_transaction(sender = node_address, receiver = 'Sviet', amount = 1)
     block = blockchain.create_block(proof, previous_hash)
     response = {'message': 'Congratulations, you just mined a block!', 
                 'index': block['index'],
                 'timestamp': block['timestamp'],
                 'proof': block['proof'],
-                'previous_hash': block['previous_hash']}
+                'previous_hash': block['previous_hash'],
+                'transactions': block['transactions']}
     return jsonify(response), 200
 
 # Getting the full Blockchain and displaying it
@@ -124,11 +151,24 @@ def is_valid():
         response = {'message': 'Something is not right. The Blockchain is not vaid.'}
     return jsonify(response), 200
 
+#Adding a new transaction to the Blockchain
+@app.route('/Add_transaction', methods = ['POST'])
+
+def add_transaction():
+    json = request.get_json()
+    transaction_keys = ['sender', 'receiver', 'amount']
+    if not all (key in json for key in transaction_keys):
+        return 'Some elements of the transaction are missing. Check sender, receiver and amount.', 400
+    index = blockchain.add_transaction(json['sender'], json['receiver'], json['amount'])
+    response = {'message': f'This transaction will be added to Block {index}'}
+    return jsonify(response), 201
+
+
+# 3 - Decentralising Blockchain  
+
+
+
 # Running the app
-# app.run(host = '0.0.0.0', port = 5000)
-
-# Decentralising blockchain  
-
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
     
